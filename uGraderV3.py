@@ -1,8 +1,7 @@
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import tkinter as tk
-import os
-from tkinter import filedialog
+import io
 
 # Define strike zone
 STRIKE_ZONE = {'left': -.8, 'right': .8, 'bottom': 1.575, 'top': 3.575}
@@ -11,11 +10,15 @@ def in_strike_zone(x, y):
     '''Check if a pitch is in the strike zone'''
     return STRIKE_ZONE['left'] <= x <= STRIKE_ZONE['right'] and STRIKE_ZONE['bottom'] <= y <= STRIKE_ZONE['top']
 
-def process_csv(file_path):
-    '''Load and process the CSV data'''
+st.title("Umpire Grader")
+
+# Replace tkinter filedialog with Streamlit's file_uploader
+uploaded_file = st.file_uploader("Upload Trackman CSV", type="csv")
+
+if uploaded_file is not None:
     try:
-        print(f"Processing file: {file_path}")
-        df = pd.read_csv(file_path)
+        # Streamlit's uploaded_file can be read directly by pandas
+        df = pd.read_csv(uploaded_file)
 
         # Filter the dataframe for 'BallCalled' and 'StrikeCalled'
         df = df[df['PitchCall'].isin(['BallCalled', 'StrikeCalled'])]
@@ -30,38 +33,32 @@ def process_csv(file_path):
         # Calculate the percentage of correct calls
         correct_call_percentage = df['CorrectCall'].mean() * 100
 
-        print(f"Percentage of correct calls: {correct_call_percentage:.2f}%")
+        st.metric("Percentage of Correct Calls", f"{correct_call_percentage:.2f}%")
 
         # Create a scatter plot of the pitch locations
-        fig, ax = plt.subplots()  # You need to get the Axes object when creating the plot
-        ax.set_aspect('equal')  # Set the aspect ratio to be equal
+        fig, ax = plt.subplots()
+        ax.set_aspect('equal')
         colors = df.apply(lambda row: 'red' if row['PitchCall'] == 'StrikeCalled' else 'green', axis=1)
-        plt.scatter(df['PlateLocSide'], df['PlateLocHeight'], c=colors, alpha=0.5)
+        ax.scatter(df['PlateLocSide'], df['PlateLocHeight'], c=colors, alpha=0.5)
 
         # Plot the strike zone
-        plt.plot([STRIKE_ZONE['left'], STRIKE_ZONE['right'], STRIKE_ZONE['right'], STRIKE_ZONE['left'], STRIKE_ZONE['left']],
+        ax.plot([STRIKE_ZONE['left'], STRIKE_ZONE['right'], STRIKE_ZONE['right'], STRIKE_ZONE['left'], STRIKE_ZONE['left']],
                  [STRIKE_ZONE['bottom'], STRIKE_ZONE['bottom'], STRIKE_ZONE['top'], STRIKE_ZONE['top'], STRIKE_ZONE['bottom']], 'b-')
 
-        # Add the percentage of correct calls as the title
-        plt.title(f"Percentage of correct calls: {correct_call_percentage:.2f}%")
+        ax.set_title(f"Percentage of correct calls: {correct_call_percentage:.2f}%")
 
-        # Save the plot to a PDF
-        base_name = os.path.basename(file_path)  # Get the base name
-        pdf_name = os.path.splitext(base_name)[0] + '.pdf'  # Replace the extension with .pdf
-        plt.savefig(pdf_name)
+        # Display the plot in the Streamlit app
+        st.pyplot(fig)
+
+        # Create a PDF buffer to allow downloading directly from the web app
+        buf = io.BytesIO()
+        fig.savefig(buf, format="pdf")
+        st.download_button(
+            label="Download Plot as PDF",
+            data=buf.getvalue(),
+            file_name="umpire_grade.pdf",
+            mime="application/pdf"
+        )
+
     except Exception as e:
-        print(f"An error occurred while processing the file: {e}")
-
-def select_file():
-    '''Prompt the user to select a file'''
-    root = tk.Tk()
-    root.withdraw()  # Hide the root window
-    file_path = filedialog.askopenfilename()
-    root.destroy()  # Destroy the root window after getting the file path
-    if file_path.endswith('.csv'):
-        process_csv(file_path)
-    else:
-        print('Please select a .csv file')
-
-# Prompt the user to select a file
-select_file()
+        st.error(f"An error occurred while processing the file: {e}")
